@@ -1,0 +1,25 @@
+{
+	"version": 1,
+	"ports": {
+		"preview": 8501,
+		"additional": {
+			"aquarium": 8000
+		}
+	},
+	"services": [],
+	"scripts": {
+		"setup": {
+			"enabled": true,
+			"command": "uv venv --allow-existing .venv && uv pip install --python .venv/bin/python -r instrument_advisor/requirements-dev.txt"
+		},
+		"run": {
+			"enabled": true,
+			"command": "(python3 -m http.server 8000 --bind 0.0.0.0 >/dev/null 2>&1 &); cd instrument_advisor && exec ../.venv/bin/streamlit run app.py --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableCORS false --server.enableXsrfProtection false"
+		},
+		"archive": {
+			"enabled": true,
+			"command": null
+		}
+	},
+	"mcpServers": []
+}
