@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>River Aquarium — Central European fauna</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1614; overflow: hidden; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #eef4e6; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+  .hud { position: fixed; z-index: 2; text-shadow: 0 1px 6px rgba(0, 0, 0, .55); }
+  .title { left: 22px; bottom: 18px; pointer-events: none; }
+  .title h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: .02em; }
+  .title p { margin: 4px 0 0; font-size: 13px; opacity: .8; }
+  .controls { right: 18px; top: 16px; display: flex; gap: 6px; }
+  .controls button {
+    font: inherit; font-size: 13px; color: inherit; cursor: pointer;
+    padding: 7px 14px; border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, .28); background: rgba(10, 26, 24, .45);
+    backdrop-filter: blur(6px);
+  }
+  .controls button:hover { background: rgba(10, 26, 24, .7); }
+  .controls button[aria-pressed="true"] { background: rgba(240, 246, 220, .9); color: #14241f; border-color: transparent; text-shadow: none; }
+</style>
+</head>
+<body>
+<canvas id="tank" aria-label="Animated aquarium of Central European river fish"></canvas>
+<div class="hud title">
+  <h1>Central European River</h1>
+  <p>Hover a fish to identify it · click the water to feed</p>
+</div>
+<div class="hud controls" role="group" aria-label="Lighting">
+  <button data-mood="day" aria-pressed="true">Day</button>
+  <button data-mood="dusk" aria-pressed="false">Dusk</button>
+  <button data-mood="night" aria-pressed="false">Night</button>
+</div>
+<script src="aquarium.js"></script>
+</body>
+</html>
