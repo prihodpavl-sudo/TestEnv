@@ -110,3 +110,22 @@ def test_lecture_example_loads_and_trains():
 
     assert not at.exception
     assert "all 3 object examples without a single error" in at.success[0].value
+
+
+def test_model_tab_writes_the_lecture_dividing_lines():
+    at = run_app()
+    at.sidebar.selectbox[0].set_value("Lecture example: bird, plane, glider")
+    at.sidebar.toggle[0].set_value(True)  # normalise, as the lecture does
+    at.run()
+    {box.label: box for box in at.selectbox}["Horizontal axis"].set_value(2)
+    at.run()
+    {box.label: box for box in at.selectbox}["Vertical axis"].set_value(3)
+    at.run()
+
+    assert not at.exception
+    text = page_text(at)
+    # Lecture: bird (x3 > x4) & (x3 > 0), plane (x4 > x3) & (x4 > 0), glider (x3 < 0) & (x4 < 0).
+    assert "1. `x3 = x4` — Bird where `x3 > x4`, Plane where `x3 < x4`" in text
+    assert "2. `x4 = 0` — Plane where `x4 > 0`, Glider where `x4 < 0`" in text
+    assert "3. `x3 = 0` — Bird where `x3 > 0`, Glider where `x3 < 0`" in text
+    assert "y1 = y2: `x3 - x4 = -x3 + x4`, which simplifies to `x3 = x4`" in text

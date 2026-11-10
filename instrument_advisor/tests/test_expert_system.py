@@ -9,7 +9,9 @@ from expert_system import (
     equations,
     examine,
     feature_influence,
+    feature_plane,
     layout_2d,
+    line_equation,
     mind_distances,
     train,
     world_distances,
@@ -90,6 +92,94 @@ def test_equations_match_the_lecture():
         "y2 = -x1 - x2 - x3 + x4 - x5 + x6",
         "y3 = -x3 - x4 - x5 - x6",
     ]
+
+
+def test_equations_on_the_beak_engine_plane_match_the_lecture():
+    # Lecture: Y1 = ... + x3 - x4 + ..., Y2 = ... - x3 + x4 + ..., Y3 = ... - x3 - x4 + ...
+    assert equations(LECTURE_FINAL[[2, 3], :], ("x3", "x4")) == [
+        "y1 = x3 - x4",
+        "y2 = -x3 + x4",
+        "y3 = -x3 - x4",
+    ]
+
+
+def describe(plane, x, y):
+    """(equation, side of upper, side of lower, sorted ends) of each dividing line, in order."""
+    return [
+        (
+            line_equation(b, x, y),
+            plane.groups[b.upper],
+            line_equation(b, x, y, ">"),
+            plane.groups[b.lower],
+            line_equation(b, x, y, "<"),
+            sorted([b.start, b.end]),
+        )
+        for b in plane.borders
+    ]
+
+
+def test_dividing_lines_on_the_beak_engine_plane_match_the_lecture():
+    # Lecture: bird (x3 > x4) & (x3 > 0), plane (x4 > x3) & (x4 > 0), glider (x3 < 0) & (x4 < 0),
+    # with borders x3 = x4, x4 = 0, x3 = 0.
+    plane = feature_plane(LECTURE_FINAL, 2, 3)
+
+    lines = describe(plane, "x3", "x4")
+
+    assert [line[:5] for line in lines] == [
+        ("x3 = x4", (0,), "x3 > x4", (1,), "x3 < x4"),
+        ("x4 = 0", (1,), "x4 > 0", (2,), "x4 < 0"),
+        ("x3 = 0", (0,), "x3 > 0", (2,), "x3 < 0"),
+    ]
+    ends = [line[5] for line in lines]
+    np.testing.assert_allclose(ends[0], [(0, 0), (1.5, 1.5)], atol=1e-12)
+    np.testing.assert_allclose(ends[1], [(-0.5, 0), (0, 0)], atol=1e-12)
+    np.testing.assert_allclose(ends[2], [(0, -0.5), (0, 0)], atol=1e-12)
+    assert plane.regions == (0, 1, 2)
+
+
+def test_classes_with_equal_weights_share_a_region_and_a_class_can_have_none():
+    # Columns A, B, C, D, E on features x1, x2, x3. C and D differ only in x3.
+    weights = np.array(
+        [
+            [-1, -3, -9, -9, -5],
+            [-9, -3, -5, -5, -5],
+            [0, 0, 5, -5, 0],
+        ],
+        dtype=float,
+    )
+
+    plane = feature_plane(weights, 0, 1)
+
+    assert plane.groups == ((0,), (1,), (2, 3), (4,))
+    assert plane.regions == (0, 1, 2)  # E is never the loudest here
+    assert [line[:5] for line in describe(plane, "x1", "x2")] == [
+        ("x1 = 3·x2", (0,), "x1 > 3·x2", (1,), "x1 < 3·x2"),
+        ("3·x1 + x2 = 0", (1,), "3·x1 + x2 > 0", (2, 3), "3·x1 + x2 < 0"),
+        ("2·x1 = x2", (0,), "2·x1 > x2", (2, 3), "2·x1 < x2"),
+    ]
+    winners = plane.winners(np.array([[1.0, 0.0], [1.0, 1.0], [-1.0, 0.1], [0.0, 0.0]]))
+    np.testing.assert_array_equal(winners, [0, 1, 2, -1])
+
+
+def test_a_class_between_two_others_does_not_get_a_line():
+    # Voices x1, 0 and -x1: the middle class ties with both along x1 = 0 but never wins.
+    weights = np.array([[1, 0, -1], [0, 0, 0]], dtype=float)
+
+    plane = feature_plane(weights, 0, 1)
+
+    assert [line[:5] for line in describe(plane, "x1", "x2")] == [
+        ("x1 = 0", (0,), "x1 > 0", (2,), "x1 < 0"),
+    ]
+    assert plane.regions == (0, 2)
+
+
+def test_lines_are_written_in_whole_numbers_whatever_the_step():
+    lines = {
+        step: [line_equation(b, "x3", "x4") for b in feature_plane(LECTURE_FINAL * step, 2, 3).borders]
+        for step in (0.05, 0.25, 5.0)
+    }
+
+    assert lines[0.05] == lines[0.25] == lines[5.0] == ["x3 = x4", "x4 = 0", "x3 = 0"]
 
 
 def test_world_and_mind_distances_match_the_lecture():

@@ -11,11 +11,13 @@ from plotly.subplots import make_subplots
 
 from expert_system import (
     TIE_TOLERANCE,
+    FeaturePlane,
     KnowledgeBase,
     TrainingResult,
     Verdict,
     feature_influence,
     layout_2d,
+    line_equation,
     mind_distances,
     world_distances,
 )
@@ -25,6 +27,8 @@ ACCENT = "#2E86AB"
 SECOND = "#F18F01"
 WARN = "#E0A100"
 MUTED = "#B4BCC6"
+INK = "#1F2933"
+SHARED = "#7B8794"  # region of classes that are equally loud on a feature plane
 
 
 def class_colour(index: int) -> str:
@@ -124,34 +128,30 @@ def demon_voices(verdict: Verdict, classes: Sequence[str]) -> go.Figure:
     return _tidy(fig, 70 + 34 * max(len(classes), 3))
 
 
-def class_regions(weights: np.ndarray, knowledge: KnowledgeBase, fx: int, fy: int) -> go.Figure:
-    """A slice of feature space along two features, coloured by the class that wins there.
+def class_regions(plane: FeaturePlane, knowledge: KnowledgeBase) -> go.Figure:
+    """The plane of two features coloured by the loudest class, with the numbered dividing lines.
 
-    Every other feature is held at 0. White gaps are the dividing lines, where
-    two or more demons are equally loud.
+    Every other feature is held at 0. Classes that are equally loud on this
+    plane share a grey region.
     """
     classes = knowledge.classes
-    axis = np.linspace(-0.5, 1.5, 161)
+    fx, fy = plane.fx, plane.fy
+    axis = np.linspace(plane.low, plane.high, 161)
     xx, yy = np.meshgrid(axis, axis)
-    grid = np.zeros((xx.size, len(knowledge.features)))
-    grid[:, fx] = xx.ravel()
-    grid[:, fy] = yy.ravel()
-    voices = grid @ weights
-    tied = (voices >= voices.max(axis=1, keepdims=True) - TIE_TOLERANCE).sum(axis=1) > 1
-    winner = voices.argmax(axis=1).astype(float)
-    winner[tied] = np.nan
-    names = np.array(["" if np.isnan(w) else classes[int(w)] for w in winner]).reshape(xx.shape)
+    winners = plane.winners(np.column_stack([xx.ravel(), yy.ravel()]))
+    names = [" / ".join(classes[c] for c in group) for group in plane.groups]
 
-    n = len(classes)
+    n = len(plane.groups)
     scale = []
-    for i in range(n):
-        scale += [(i / n, class_colour(i)), ((i + 1) / n, class_colour(i))]
+    for g, group in enumerate(plane.groups):
+        colour = class_colour(group[0]) if len(group) == 1 else SHARED
+        scale += [(g / n, colour), ((g + 1) / n, colour)]
     fig = go.Figure(
         go.Heatmap(
             x=axis,
             y=axis,
-            z=winner.reshape(xx.shape),
-            text=names,
+            z=np.where(winners < 0, np.nan, winners).reshape(xx.shape),
+            text=np.array([names[w] if w >= 0 else "" for w in winners]).reshape(xx.shape),
             colorscale=scale,
             zmin=-0.5,
             zmax=n - 0.5,
@@ -161,13 +161,58 @@ def class_regions(weights: np.ndarray, knowledge: KnowledgeBase, fx: int, fy: in
             hovertemplate="Region of %{text}<extra></extra>",
         )
     )
+    if any(len(group) > 1 for group in plane.groups):
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                name="Shared region",
+                marker=dict(size=12, symbol="square", color=SHARED, opacity=0.6),
+            )
+        )
+
+    if plane.borders:
+        x_name, y_name = f"x{fx + 1}", f"x{fy + 1}"
+        xs: list[float | None] = []
+        ys: list[float | None] = []
+        for border in plane.borders:
+            xs += [border.start[0], border.end[0], None]
+            ys += [border.start[1], border.end[1], None]
+        fig.add_trace(
+            go.Scatter(
+                x=xs,
+                y=ys,
+                mode="lines",
+                name="Dividing line",
+                line=dict(color=INK, width=2.5),
+                hoverinfo="skip",
+            )
+        )
+        middles = np.array([np.add(border.start, border.end) / 2 for border in plane.borders])
+        fig.add_trace(
+            go.Scatter(
+                x=middles[:, 0],
+                y=middles[:, 1],
+                mode="markers+text",
+                text=[str(number) for number in range(1, len(plane.borders) + 1)],
+                textfont=dict(color="white", size=12),
+                marker=dict(size=22, color=INK, line=dict(color="white", width=1.5)),
+                hovertext=[
+                    f"Line {number}: {line_equation(border, x_name, y_name)}"
+                    for number, border in enumerate(plane.borders, start=1)
+                ],
+                hovertemplate="%{hovertext}<extra></extra>",
+                showlegend=False,
+            )
+        )
 
     # Classes that share a corner are fanned out around it so each stays visible.
     prototypes = knowledge.prototypes()
     corners: dict[tuple[float, float], list[int]] = {}
-    for c in range(n):
+    for c in range(len(classes)):
         corners.setdefault((float(prototypes[c, fx]), float(prototypes[c, fy])), []).append(c)
-    for c in range(n):
+    for c in range(len(classes)):
         x, y = float(prototypes[c, fx]), float(prototypes[c, fy])
         members = corners[(x, y)]
         angle = 2 * np.pi * members.index(c) / len(members)
@@ -184,7 +229,11 @@ def class_regions(weights: np.ndarray, knowledge: KnowledgeBase, fx: int, fy: in
             )
         )
     ticks = dict(
-        tickvals=[0, 1], ticktext=["No (0)", "Yes (1)"], range=[-0.5, 1.5], zeroline=False, constrain="domain"
+        tickvals=[0, 1],
+        ticktext=["No (0)", "Yes (1)"],
+        range=[plane.low, plane.high],
+        zeroline=False,
+        constrain="domain",
     )
     fig.update_xaxes(title=f"x{fx + 1} · {knowledge.features[fx]}", **ticks)
     fig.update_yaxes(title=f"x{fy + 1} · {knowledge.features[fy]}", scaleanchor="x", **ticks)

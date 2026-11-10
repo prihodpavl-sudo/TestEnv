@@ -1,16 +1,20 @@
 """Instrument Advisor: a self-learning expert system with a Streamlit interface.
 
-Run with:  streamlit run app.py
+Run with:  python app.py   (or: streamlit run app.py)
 """
 
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import pandas as pd
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 import charts
 from expert_system import (
+    FeaturePlane,
     KnowledgeBase,
     Rule,
     TrainingResult,
@@ -18,6 +22,8 @@ from expert_system import (
     equations,
     examine,
     feature_influence,
+    feature_plane,
+    line_equation,
     train,
 )
 from presets import INSTRUMENTS, PRESETS, Preset
@@ -353,6 +359,63 @@ def training_report(result: TrainingResult, noun: str) -> None:
     )
 
 
+def dividing_lines(plane: FeaturePlane, weights: np.ndarray, knowledge: KnowledgeBase) -> None:
+    """Equations of the lines that divide the regions on the plane, and where they come from."""
+    classes, features = knowledge.classes, knowledge.features
+    x, y = f"x{plane.fx + 1}", f"x{plane.fy + 1}"
+
+    def members(group: int) -> str:
+        return " / ".join(classes[c] for c in plane.groups[group])
+
+    st.markdown(
+        f"**Equations of the dividing lines** ({x} = {features[plane.fx]}, {y} = {features[plane.fy]})"
+    )
+    if plane.borders:
+        st.markdown(
+            "\n".join(
+                f"{number}. `{line_equation(border, x, y)}` — {members(border.upper)} where "
+                f"`{line_equation(border, x, y, '>')}`, {members(border.lower)} where "
+                f"`{line_equation(border, x, y, '<')}`"
+                for number, border in enumerate(plane.borders, start=1)
+            )
+        )
+    else:
+        st.info(
+            f"There are no dividing lines: every class has the same weights for {x} and {y}, "
+            "so these two features alone cannot tell them apart."
+        )
+    for group in plane.groups:
+        if 1 < len(group) < len(classes):
+            st.caption(
+                f"{listing([classes[c] for c in group])} have the same weights for {x} and {y}, "
+                "so they share a region here; other features tell them apart."
+            )
+    silent = [classes[c] for g, group in enumerate(plane.groups) if g not in plane.regions for c in group]
+    if silent:
+        one = len(silent) == 1
+        st.caption(
+            f"{listing(silent)} {'is' if one else 'are'} never the loudest on this plane, "
+            f"so {'it has' if one else 'they have'} no region here."
+        )
+    with st.expander("Where these equations come from"):
+        voices = equations(weights[[plane.fx, plane.fy], :], (x, y))
+        st.markdown(f"With every other feature at 0, each class's equation keeps only its {x} and {y} terms:")
+        width = max(len(line) for line in voices)
+        st.code(
+            "\n".join(f"{line:<{width}}   ({name})" for line, name in zip(voices, classes)), language=None
+        )
+        if plane.borders:
+            first = plane.borders[0]
+            j, k = plane.groups[first.upper][0], plane.groups[first.lower][0]
+            left, right = voices[j].split(" = ", 1)[1], voices[k].split(" = ", 1)[1]
+            st.markdown(
+                "A dividing line is where two voices are equal. Line 1, for example, is where "
+                f"y{j + 1} = y{k + 1}: `{left} = {right}`, which simplifies to "
+                f"`{line_equation(first, x, y)}`. There is no constant term, so every line passes "
+                "through the origin (0, 0)."
+            )
+
+
 def model_view(result: TrainingResult) -> None:
     knowledge = result.knowledge
     features, classes = knowledge.features, knowledge.classes
@@ -384,12 +447,15 @@ def model_view(result: TrainingResult) -> None:
         others = [i for i in range(len(features)) if i != fx]
         default_y = strongest[1] if strongest[1] != fx else others[0]
         fy = pick_y.selectbox("Vertical axis", others, index=others.index(default_y), format_func=axis_label)
-        show(charts.class_regions(weights, knowledge, fx, fy), "regions")
+        plane = feature_plane(weights, fx, fy)
+        show(charts.class_regions(plane, knowledge), "regions")
         st.caption(
             "A slice through feature space with every other feature set to No. Each colour is the region "
-            "where one class has the loudest demon, and the regions meet at the dividing lines. "
+            "where one class has the loudest demon; grey marks classes that are equally loud here. "
+            "The numbered black lines divide the regions, and their equations are listed below. "
             "Dots show where the taught classes sit on these two features."
         )
+        dividing_lines(plane, weights, knowledge)
 
     st.subheader("Which features matter")
     show(charts.influence(weights, features), "influence")
@@ -480,4 +546,11 @@ def main() -> None:
         step_study(knowledge, settings)
 
 
-main()
+if __name__ == "__main__":
+    if get_script_run_ctx(suppress_warning=True) is None:
+        # Started as "python app.py": hand over to Streamlit, which then runs this file itself.
+        from streamlit.web import cli
+
+        sys.argv = ["streamlit", "run", __file__, *sys.argv[1:]]
+        sys.exit(cli.main())
+    main()

@@ -18,10 +18,10 @@ A self-learning expert system on the imitation principle, in `instrument_advisor
 cd instrument_advisor
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-streamlit run app.py
+python app.py
 ```
 
-Tested with Python 3.12.
+`streamlit run app.py` works too. Tested with Python 3.12.
 
 How it works:
 
@@ -34,7 +34,7 @@ What the interface does:
 - **Advisor:** answer Yes / No / Not sure for each feature and see the best match, its lead and every demon's voice. If the answer is wrong or the instrument is new, name it and the system adds it and retrains.
 - **Knowledge base:** edit the table of instruments and features, add rows, add or remove features. Every change retrains the system automatically.
 - **Training report:** whether training finished, how many epochs were run, the learning curve, each epoch's results, the final examination and each lesson.
-- **Model and graphs:** the weight matrix after any epoch, the system of equations, class regions on two chosen features, which features matter, and maps of the classes as the data describes them and as the system learned them.
+- **Model and graphs:** the weight matrix after any epoch, the system of equations, class regions on two chosen features with the equations of the lines that divide them, which features matter, and maps of the classes as the data describes them and as the system learned them.
 - **Step study:** training from scratch with different step sizes, with and without normalisation.
 
 The sidebar switches between the instrument data and the lecture's bird / plane / glider example, and sets the teaching rule, step, normalisation and epoch limit.
